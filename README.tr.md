@@ -28,7 +28,7 @@
 **Birlikte dinle**
 - **Jam.** Bir Jam başlat ve davet kodunu paylaş. Herkes aynı şarkıyı aynı anda dinler. Saat senkronu ve hafif hız düzeltmesi sayesinde fark birkaç on milisaniyenin altında kalır.
 - **Ortak sıra.** YouTube Music'teki herhangi bir `⋮` menüsünden şarkı, albüm ya da çalma listesi ekleyebilir veya şarkıya sağ tıklayabilirsin. Sırayı sürükleyerek düzenlersin. Sıra azalınca YouTube Music'in kendi radyosundan gelen öneriler devreye girer.
-- **Host yetkileri.** Diğerlerinin neler yapabileceğine host karar verir. Varsayılanda misafirler şarkı ekleyebilir, çalmayı ise yalnızca host yönetir. Host her kişiye ayrı ayrı **Sıra** ya da **Kontrol** yetkisi verebilir. Ayrıca kişileri çıkarabilir, hostluğu devredebilir, Jam'i kilitleyebilir ve yeni davet kodu oluşturabilir.
+- **Host yetkileri.** Diğerlerinin neler yapabileceğine host karar verir. Varsayılanda misafirler şarkı ekleyebilir, çalmayı ise yalnızca host yönetir. Host her kişiye ayrı ayrı **Sıra** ya da **Kontrol** yetkisi verebilir. Ayrıca kişileri çıkarabilir, hostluğu devredebilir, Jam'i kilitleyebilir ve yeni davet kodu oluşturabilir. **Kontrol** yetkisi olan herkes senin sekmende istediği videoyu açabilir ve bu video YouTube geçmişinde görünür.
 - **Reklamlarla uyumlu.** Ücretsiz sürümde reklam yalnızca seni bekletir, Jam'i değil. Reklam bitince Chorus seni doğru saniyeye geri getirir.
 - **Tepkiler.** Çalan şarkıya ❤️ 🔥 😂 🥹 🎉 gönderebilirsin.
 

@@ -256,6 +256,7 @@
   const asked = new Set();
 
   function wantLyrics() {
+    if (!UI.isOpen || UI.page !== 'lyrics') return;
     const t = inJam() ? view.jam.cur && view.jam.cur.t : tick && tick.t;
     if (!t || !t.id || asked.has(t.id)) return;
     if (asked.size > 300) asked.clear();
@@ -297,9 +298,7 @@
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = 'chorus-stats-' + new Date().toISOString().slice(0, 10) + '.json';
-      document.body.appendChild(a);
       a.click();
-      a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     } else if (m.type === 'css') {
       cssDone = true;
@@ -584,6 +583,7 @@
       if (!inJam()) wantLyrics();
     }
     UI.solo(m);
+    wantLyrics();
     reportNp();
     if (!active()) {
       if (rate !== 1) setRate(1);

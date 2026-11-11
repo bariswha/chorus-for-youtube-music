@@ -28,7 +28,7 @@
 **Listen together**
 - **Jams.** Start a Jam, share the invite code, and everyone hears the same song at the same moment. Clock sync and gentle speed correction keep everyone within a few tens of milliseconds.
 - **Shared queue.** Add songs, albums or playlists from any `⋮` menu in YouTube Music, or right-click a song. Drag to reorder. When the queue runs low, suggestions from YouTube Music's own radio keep the music going.
-- **Host controls.** The host decides what everyone else can do. By default, guests can add songs and only the host controls playback. The host can grant **Queue** or **Control** to each person, remove people, hand over the host role, lock the Jam, or issue a new invite code.
+- **Host controls.** The host decides what everyone else can do. By default, guests can add songs and only the host controls playback. The host can grant **Queue** or **Control** to each person, remove people, hand over the host role, lock the Jam, or issue a new invite code. Anyone with **Control** can play any video in your tab, and it will appear in your YouTube history.
 - **Works with ads.** On the free tier, an ad only pauses you, not the Jam. When it ends, Chorus puts you back at the right spot.
 - **Reactions.** Send ❤️ 🔥 😂 🥹 🎉 to the song that's playing.
 

@@ -18,6 +18,8 @@ const knocks = new Set();
 const live = new Map();
 const watching = new Map();
 const nonces = new Map();
+const jamNonces = new Map();
+const NONCE_MAX = 5000;
 const buckets = new Map();
 const pendingOps = new Map();
 const doneOps = [];
@@ -62,16 +64,24 @@ function limit(key, max, per) {
   return b.n <= max;
 }
 
-function fresh(nonce) {
-  if (typeof nonce !== 'string' || nonce.length < 8 || nonce.length > 40 || nonces.has(nonce)) return false;
-  nonces.set(nonce, Date.now());
-  clearTimeout(nonceTimer);
-  nonceTimer = setTimeout(() => chrome.storage.session.set({ nonces: [...nonces].slice(-1500) }).catch(() => {}), 300);
-  if (nonces.size > 2000) {
-    const cut = Date.now() - CLOCK_WINDOW * 2;
-    for (const [k, t] of nonces) if (t < cut || nonces.size > 1500) nonces.delete(k);
+function remember(map, key, nonce) {
+  if (typeof nonce !== 'string' || nonce.length < 8 || nonce.length > 40 || map.has(nonce)) return false;
+  const now = Date.now();
+  if (map.size >= NONCE_MAX) {
+    const cut = now - CLOCK_WINDOW * 2;
+    for (const [k, t] of map) {
+      if (t >= cut) break;
+      map.delete(k);
+    }
   }
+  if (map.size >= NONCE_MAX) return false;
+  map.set(nonce, now);
+  chrome.storage.session.set({ [key]: [...map] }).catch(() => {});
   return true;
+}
+
+function fresh(nonce) {
+  return remember(nonces, 'nonces', nonce);
 }
 
 async function cached(key, make) {
@@ -156,9 +166,11 @@ function identity() {
       card = st.card && isCode(st.card.salt, 16) ? { salt: st.card.salt } : { salt: rid(16) };
       card.code = await codeOf(me.sk, me.dk, card.salt);
       await chrome.storage.local.set({ presence, card: { salt: card.salt } });
-      const saved = await chrome.storage.session.get(['jam', 'nonces']);
+      const saved = await chrome.storage.session.get(['jam', 'nonces', 'jamNonces']);
+      const keep = Date.now() - CLOCK_WINDOW * 2;
+      if (Array.isArray(saved.jamNonces)) for (const x of saved.jamNonces) if (Array.isArray(x) && typeof x[0] === 'string' && num(x[1]) >= keep) jamNonces.set(x[0], num(x[1]));
       restored = saved.jam || null;
-      if (Array.isArray(saved.nonces)) for (const x of saved.nonces) if (Array.isArray(x) && typeof x[0] === 'string') nonces.set(x[0], num(x[1]));
+      if (Array.isArray(saved.nonces)) for (const x of saved.nonces) if (Array.isArray(x) && typeof x[0] === 'string' && num(x[1]) >= keep) nonces.set(x[0], num(x[1]));
       return me;
     })();
   }
@@ -200,7 +212,8 @@ function online() {
   connecting = (async () => {
     await identity();
     const pres = await presTarget(me.id, presence.secret);
-    const will = { topic: pres.topic, payload: await seal(pres.key, { on: false, ts: Date.now() }), retain: true };
+    const sid = rid(12);
+    const will = { topic: pres.topic, payload: await offlinePayload(pres.key, sid), retain: true };
     let mq = null;
     for (const url of BROKERS) {
       const c = new Mqtt(url);
@@ -215,7 +228,7 @@ function online() {
     if (!mq) throw new Error('broker');
     routes.clear();
     watching.clear();
-    net = { mq, pres, inbox: await inboxTopic(me.id) };
+    net = { mq, pres, sid, inbox: await inboxTopic(me.id) };
     mq.on('message', (topic, data) => {
       const fn = routes.get(topic);
       if (fn) fn(data).catch(() => {});
@@ -254,6 +267,11 @@ function online() {
   return connecting;
 }
 
+async function offlinePayload(key, sid) {
+  const p = JSON.stringify({ on: false, id: me.id, sid, ts: Date.now() });
+  return seal(key, { p, s: await sign(me.sPriv, p) });
+}
+
 async function goOffline() {
   if (!net) return;
   const n = net;
@@ -262,7 +280,7 @@ async function goOffline() {
   watching.clear();
   live.clear();
   try {
-    n.mq.pub(n.pres.topic, await seal(n.pres.key, { on: false, ts: Date.now() }), true);
+    n.mq.pub(n.pres.topic, await offlinePayload(n.pres.key, n.sid), true);
   } catch {}
   setTimeout(() => n.mq.close(), 300);
 }
@@ -291,6 +309,7 @@ async function publishPresence() {
   const p = JSON.stringify({
     on: true,
     id: me.id,
+    sid: net.sid,
     ts: Date.now(),
     who: profile(),
     np: t ? { id: t.id, title: t.title, artist: t.artist, url: t.url, art: t.art } : null,
@@ -339,11 +358,7 @@ function unwatchFriend(id) {
 
 async function onPresence(id, pk, key, data) {
   const f = friends[id];
-  if (!f || f.pk !== pk) return;
-  if (!data.length) {
-    if (live.delete(id)) push();
-    return;
-  }
+  if (!f || f.pk !== pk || !data.length) return;
   const env = await open(key, data);
   let o = null;
   if (env && typeof env.p === 'string' && env.p.length < 8000 && (await verify(f.sk, env.p, env.s))) {
@@ -351,15 +366,17 @@ async function onPresence(id, pk, key, data) {
       o = JSON.parse(env.p);
     } catch {}
   }
-  if (o && o.id !== id) o = null;
-  if (!o || !o.on || Math.abs(Date.now() - num(o.ts)) > PRESENCE_TTL) {
-    if (live.delete(id)) push();
+  if (!o || o.id !== id) return;
+  if (!o.on) {
+    const l = live.get(id);
+    if (l && l.sid === o.sid && live.delete(id)) push();
     return;
   }
+  if (Math.abs(Date.now() - num(o.ts)) > PRESENCE_TTL) return;
   const who = whoOf({ ...obj(o.who), id });
   const np = o.np ? track(o.np) : null;
   const j = o.jam && typeof o.jam === 'object' ? { n: Math.max(1, Math.min(99, num(o.jam.n) | 0)), host: !!o.jam.host } : null;
-  live.set(id, { at: Date.now(), np: np ? { title: np.title, artist: np.artist, url: np.url, art: np.art } : null, jam: j });
+  live.set(id, { at: Date.now(), sid: typeof o.sid === 'string' ? o.sid.slice(0, 20) : '', np: np ? { title: np.title, artist: np.artist, url: np.url, art: np.art } : null, jam: j });
   if (who.name && (who.name !== f.name || who.avatar !== f.avatar || who.url !== f.url)) {
     f.name = who.name;
     f.avatar = who.avatar;
@@ -391,8 +408,7 @@ async function openEnvelope(data) {
   if (Math.abs(Date.now() - num(p.ts)) > CLOCK_WINDOW) return null;
   if ((await idOf(env.sk, env.dk)) !== p.from) return null;
   if (!(await verify(env.sk, env.p, env.s))) return null;
-  if (!fresh(p.n)) return null;
-  return { from: p.from, sk: env.sk, dk: env.dk, body: obj(p.b) };
+  return { from: p.from, sk: env.sk, dk: env.dk, n: p.n, body: obj(p.b) };
 }
 
 function notify(key, who, extra) {
@@ -518,7 +534,7 @@ function addDm(id, msg) {
 
 async function onInbox(data) {
   const e = await openEnvelope(data);
-  if (!e || !limit('i:' + e.from, 40, 20000)) return;
+  if (!e || !limit('inbox', 120, 20000) || !limit('i:' + e.from, 40, 20000) || !fresh(e.n)) return;
   const b = e.body;
   const f = friends[e.from];
   const peer = { id: e.from, sk: e.sk, dk: e.dk };
@@ -547,7 +563,7 @@ async function onInbox(data) {
       if (pending.length >= 50) delete requests[pending[0].id];
       requests[e.from] = { id: e.from, sk: e.sk, dk: e.dk, who, pk: b.pk, dir: 'in', at: Date.now() };
       saveRequests();
-      notify('reqIn', who);
+      if (limit('reqToast', 5, 60000)) notify('reqIn', who);
       push();
       break;
     }
@@ -747,7 +763,7 @@ function routeJam(j) {
 async function enterJam(id, secret, state = null, skew = 0, chat = [], expect = null) {
   const t = await jamTarget(id, secret);
   const log = Array.isArray(chat) ? chat.slice(-150) : [];
-  jam = { id, secret, key: t.key, topic: t.topic, state: state ? cleanState(state) : null, skew: num(skew), samples: [], heard: Date.now(), hostAt: 0, contest: 0, expect, chat: log, seen: new Set(log.map(c => c.mid)), unread: 0 };
+  jam = { id, secret, key: t.key, topic: t.topic, state: state ? cleanState(state) : null, skew: num(skew), samples: [], heard: Date.now(), hostAt: 0, expect, chat: log, seen: new Set(log.map(c => c.mid)), unread: 0 };
   if (net) routeJam(jam);
   save();
 }
@@ -850,7 +866,7 @@ async function leaveJam(silent) {
 
 async function jamSend(m, j = jam) {
   if (!net || !j) return;
-  const p = JSON.stringify({ ...m, from: me.id, j: j.id, ts: Date.now() });
+  const p = JSON.stringify({ ...m, from: me.id, j: j.id, ts: Date.now(), n: rid(16) });
   net.mq.pub(j.topic, await seal(j.key, { p, s: await sign(me.sPriv, p), sk: me.sk, dk: me.dk }));
 }
 
@@ -868,7 +884,7 @@ async function onJam(j, data) {
   if (Math.abs(Date.now() - num(m.ts)) > CLOCK_WINDOW) return;
   if ((await idOf(env.sk, env.dk)) !== m.from) return;
   if (!(await verify(env.sk, env.p, env.s))) return;
-  if (j !== jam || !limit('j:' + m.from, 120, 20000)) return;
+  if (j !== jam || !limit('j:' + m.from, 120, 20000) || !remember(jamNonces, 'jamNonces', m.n)) return;
   m.sk = env.sk;
   m.dk = env.dk;
   jamMsg(m);
@@ -1006,8 +1022,8 @@ function acceptState(m) {
       return;
     }
     const fromHost = m.from === s.host;
-    const takeover = !!s.members[m.from] && n.host === m.from && (now - jam.heard > 8000 || (now - jam.contest < 15000 && m.from < s.host));
-    if (takeover && !fromHost) jam.contest = now;
+    const rank = successors(s).indexOf(m.from);
+    const takeover = rank >= 0 && n.host === m.from && now - jam.heard > 10000 + rank * 5000;
     if (!fromHost && !takeover) return;
   }
   const prevHost = s && s.host;
@@ -1324,7 +1340,7 @@ function apply(op, from) {
     }
     case 'promote': {
       const i = inCtx(op.qid);
-      if (i < 0) return;
+      if (i < 0 || s.queue.length >= 300) return;
       s.queue.push(s.ctx.items.splice(i, 1)[0]);
       break;
     }
@@ -1377,6 +1393,7 @@ function apply(op, from) {
         s.at = when(op, 200);
         s.ended = false;
       } else {
+        if (s.cur && s.queue.length >= 300) return;
         if (s.cur) s.queue.unshift(s.cur);
         s.cur = s.hist.pop();
         s.pos = 0;
@@ -1516,12 +1533,15 @@ function sweep(now) {
   } else broadcast();
 }
 
-function takeover(now) {
-  const s = jam.state;
-  const order = Object.keys(s.members)
+function successors(s) {
+  return Object.keys(s.members)
     .filter(id => id !== s.host)
     .sort();
-  const rank = order.indexOf(me.id);
+}
+
+function takeover(now) {
+  const s = jam.state;
+  const rank = successors(s).indexOf(me.id);
   if (rank < 0 || now - jam.heard < 10000 + rank * 5000) return;
   delete s.members[s.host];
   delete s.allow[s.host];

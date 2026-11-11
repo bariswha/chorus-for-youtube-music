@@ -14,7 +14,7 @@ Chorus has no backend, no analytics and no tracking. The authors never receive a
 | People in your Jam | The display name you chose in Chorus, the Jam queue, chat messages and reactions. |
 | Your friends | Whether you're online, the song you're playing (you can turn this off in Settings), whether you're in a Jam, and your stats summary if you turn on **Let friends see my stats**. |
 | Public relay servers | Only encrypted data, plus your IP address and connection times, like any server you connect to. |
-| LRCLIB | The title, artist and duration of a song when you open its lyrics. |
+| LRCLIB | The title, artist and duration of a song, only while the lyrics view is open. |
 
 ## What Chorus does with YouTube Music
 

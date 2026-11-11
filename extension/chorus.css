@@ -2407,6 +2407,23 @@ a.chorus-t:hover {
   box-shadow: inset 0 0 0 1px var(--chorus-line);
 }
 
+.chorus-idtag {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--chorus-chip);
+  color: var(--chorus-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+}
+
+.chorus-idtag.is-friend {
+  color: var(--chorus-fg);
+}
+
 .chorus-warn {
   max-width: 260px;
   margin-top: 6px;
